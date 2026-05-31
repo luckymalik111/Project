@@ -1,14 +1,6 @@
 terraform {
   required_version = ">= 1.0"
 
-  backend "s3" {
-    bucket         = "lucky-terraform-state-bucket"
-    key            = "ec2/dev/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -21,7 +13,45 @@ provider "aws" {
   region = "ap-south-1"
 }
 
-# Latest Amazon Linux 2023 AMI
+#############################
+# S3 Bucket for Terraform State
+#############################
+
+resource "aws_s3_bucket" "terraform_state" {
+  bucket = "lucky-terraform-state-bucket-123456"
+
+  tags = {
+    Name = "Terraform State Bucket"
+  }
+}
+
+resource "aws_s3_bucket_versioning" "state_versioning" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+#############################
+# DynamoDB Table for Locking
+#############################
+
+resource "aws_dynamodb_table" "terraform_locks" {
+  name         = "terraform-locks"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "LockID"
+
+  attribute {
+    name = "LockID"
+    type = "S"
+  }
+}
+
+#############################
+# Latest Amazon Linux 2023
+#############################
+
 data "aws_ami" "amazon_linux" {
   most_recent = true
 
@@ -33,7 +63,10 @@ data "aws_ami" "amazon_linux" {
   }
 }
 
+#############################
 # EC2 Instance
+#############################
+
 resource "aws_instance" "web_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
@@ -54,6 +87,10 @@ resource "aws_instance" "web_server" {
   }
 }
 
+#############################
+# Outputs
+#############################
+
 output "instance_id" {
   value = aws_instance.web_server.id
 }
@@ -68,4 +105,12 @@ output "private_ip" {
 
 output "availability_zone" {
   value = aws_instance.web_server.availability_zone
+}
+
+output "s3_bucket_name" {
+  value = aws_s3_bucket.terraform_state.bucket
+}
+
+output "dynamodb_table" {
+  value = aws_dynamodb_table.terraform_locks.name
 }
